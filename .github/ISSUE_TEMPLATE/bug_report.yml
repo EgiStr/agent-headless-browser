@@ -1,0 +1,41 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Redact emails, report IDs and cookies.** For security problems, use a private
+        [security advisory](https://github.com/EgiStr/agent-headless-browser/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, e.g. `ahb start`, `ahb looker-export ...`
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output with `-v`
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`ahb --version`, OS, `google-chrome --version` (or Chrome's About page)"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it run?
+      options: [Desktop (Windows), Desktop (Linux/macOS), Linux server without display]
+    validations:
+      required: true

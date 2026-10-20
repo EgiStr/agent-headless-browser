@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-headless-browser"
+version = "0.2.0"
+description = "Headless Chrome for AI agents that stays signed in to your own Google account, exposed as an MCP server."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "EgiStr" }]
+requires-python = ">=3.10"
+keywords = ["mcp", "headless-chrome", "ai-agents", "browser-automation", "looker-studio", "cdp"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Internet :: WWW/HTTP :: Browsers",
+  "Typing :: Typed",
+]
+dependencies = [
+  "patchright>=1.55",
+  "mcp>=2.3,<3",
+]
+
+[project.optional-dependencies]
+bench = ["psutil>=5.9"]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "pre-commit>=3.8",
+  "psutil>=5.9",
+]
+
+[project.scripts]
+ahb = "agent_headless_browser.cli:main"
+ahb-mcp = "agent_headless_browser.mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/EgiStr/agent-headless-browser"
+Issues = "https://github.com/EgiStr/agent-headless-browser/issues"
+Changelog = "https://github.com/EgiStr/agent-headless-browser/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_headless_browser"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT"]
+# Line length is the formatter's job; the long lines left are JS/HTML string literals.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"benchmarks/*" = ["ASYNC240"]
+
+[tool.mypy]
+python_version = "3.10"
+packages = ["agent_headless_browser"]
+mypy_path = "src"
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["psutil"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: needs Google Chrome and network (set AHB_E2E=1)"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["agent_headless_browser"]
+branch = true

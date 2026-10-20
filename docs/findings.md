@@ -1,5 +1,10 @@
 # Findings: headless agent browser on a logged-in Google profile
 
+> **Research log.** Each experiment is recorded as it ran in Oct 2026, before the code became the
+> `agent_headless_browser` package. Script names here refer to that early layout: `serve_chrome.py` became
+> `ahb start/stop`, `looker_crawl.py` became `ahb looker-export`, `healthcheck.py` became `ahb health`, and
+> `login_view.py` became `ahb login-view`.
+
 Goal: an AI-agent browser that reuses a logged-in Google account, runs headless
 24/7 (VPS), and can pull every row behind the Looker Studio report
 `<report-id>` (shared only to the tester's Google Workspace account) into CSV.
@@ -135,47 +140,13 @@ Image `vps/Dockerfile`; code mounted at /src; profile on a Linux-native volume.
 **Answer: yes, a Linux CLI VPS can sign in to Google headless and run the full export, with no X server or desktop.**
 Still untested: a real datacenter IP (Google may ask for extra verification on a new device or location) and a multi-day lifetime.
 
-## Benchmark (same tasks as dev.to "16MB vs 1.2GB", `scripts/bench.py`)
-Raw: `out/bench_windows.json`, `out/bench_linux.log`, auth run `out/bench_windows_auth.json`.
-Windows = this laptop (12 threads, 15 GB). Linux = Docker/WSL2 VM on the same laptop (7.4 GB).
-The article ran on Apple Silicon macOS, so compare orders of magnitude, not exact numbers.
+## Benchmark
 
-| Metric | ours Windows | ours Linux CLI | article: playwright-CLI / agent-browser / browser-use / Lightpanda / steel |
-|---|---|---|---|
-| cold start (launch -> CDP ready) | 3.38 s | 0.37 s | n/a |
-| httpbin open + snapshot + close, avg of 3 | 0.58 s | 0.76 s | 1.95 / 1.88 / 4.91 / 0.92 / 0.45 s |
-| memory, 1 page, **RSS sum** (article metric) | 821 MB / 13 proc | 1,532 MB / 16 proc | 929 / 1,202 / 869 / 16 / 581 MB |
-| memory, 1 page, **USS** (unique RAM) | 325 MB | 245 MB | not reported |
-| idle Chrome USS | 256 MB | 203 MB | n/a |
-| 3 parallel sessions: time / USS | 1.08 s / 358 MB | 1.01 s / 273 MB | p-CLI 4.90 s / 559 MB; agent-browser 10.58 s / 4,165 MB; Lightpanda 9.34 s / ~48 MB |
-| SPA react.dev load | 2.51 s | 1.44 s | 6.22 / 4.83 / 12.77 / 4.20 / 1.45 s |
-| react.dev snapshot size | 15.5 KB | 15.5 KB | agent-browser 34 KB tree; steel 16 KB md |
-| github.com/microsoft/playwright snapshot | 18.3 KB (text <= 6k chars + 150 refs) | same | agent-browser compact 16 KB, full 70 KB |
-| errors: DNS / 404 / timeout | `ERR_NAME_NOT_RESOLVED` / `ERR_HTTP_RESPONSE_CODE_FAILURE` / `Timeout 3000ms exceeded` | same | |
-| Google-auth page as the test account | yes, no re-login | yes, after headless login | none of the five tested Google auth |
-| Looker export 212,117 rows | 120 s | 99 s | n/a |
+Moved to [benchmark.md](benchmark.md).
 
-Reading it:
-- On Linux RSS overstates Chrome about 6x because processes forked from the zygote share pages. Use USS for VPS sizing.
-  One agent Chrome plus a few tabs is about 250-350 MB. Python and the MCP server add about 60 MB. A 1 GB VPS is tight; 2 GB is comfortable.
-- "Parallel" here means 3 tabs in one browser that share the login. agent-browser's 4 GB is 3 separate browsers.
-- Lightpanda (16 MB) wins on memory but is not Chrome. It cannot run Looker Studio's SPA or hold a Google login, so it does not fit this goal.
-- Snapshot size is capped by design (`page_snapshot`: 6k chars of text + 150 refs). That keeps tokens predictable.
+## 3. VPS setup
 
-## 3. Recommended VPS setup (tested in a Linux CLI container; not yet on a real VPS)
-
-1. On the VPS, install Google Chrome (not Chromium snap) + `xvfb` + `x11vnc`/noVNC, or use a Chrome+Xvfb+noVNC Docker image with the profile on a volume.
-2. Log in **on the VPS itself**, headless: `python serve_chrome.py --login`, then `python login_view.py`.
-   From the PC, `ssh -N -L 9500:127.0.0.1:9500 user@vps` and open http://127.0.0.1:9500. No X or noVNC is needed.
-   A Windows profile cannot be moved there (DPAPI/app-bound cookie encryption), and per Exp 2/3 transplanting sessions fails.
-   Linux has no TPM, so DBSC cannot bind there anyway; the flag is kept for safety.
-3. `python serve_chrome.py --stop`, then `python serve_chrome.py` (headless) under systemd with `Restart=on-failure`.
-   Or stay headful under Xvfb. That looks even more like a normal browser and costs about 100 MB more RAM.
-4. Agents attach: `python looker_crawl.py --mode attach --cdp http://127.0.0.1:9333`. Keep port 9333 bound to 127.0.0.1;
-   reach it over an SSH tunnel only. CDP gives full control of the logged-in Google account.
-5. `healthcheck.py --every 1800` plus an alert when `ok:false`. Re-login over noVNC when Google asks.
-6. Expect a "new device sign-in" security email and maybe a verification prompt on first login from a datacenter IP.
-   This is your own account, so approve it on your phone.
+Moved to [vps.md](vps.md).
 
 ## 4. Looker Studio extraction notes
 - Endpoints: `POST /u/0/getSchema` (fields), `POST /u/0/batchedDataV2` (data), XSSI prefix `)]}'`.
