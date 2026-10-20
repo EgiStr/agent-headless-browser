@@ -1,0 +1,7 @@
+.venv/
+profiles/
+secrets/
+out/
+__pycache__/
+.mcp.json
+*.pyc
