@@ -1,0 +1,18 @@
+# User service: the long-lived agent Chrome.
+#   cp deploy/systemd/*.service deploy/systemd/*.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now ahb-chrome ahb-health.timer
+#   loginctl enable-linger "$USER"   # keep it running after you log out
+[Unit]
+Description=agent-headless-browser Chrome (CDP on 127.0.0.1:9333)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/ahb start --foreground
+# Chrome exits cleanly on SIGTERM and flushes cookies; give it time.
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=agent-headless-browser session health check
+After=ahb-chrome.service
+Requires=ahb-chrome.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ahb health
