@@ -11,6 +11,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - A one-click installer for macOS, Linux and Windows (`scripts/install.sh`, `scripts/install.ps1`, `scripts/install.cmd`).
   It checks the prerequisites, installs the package, registers the MCP server with the Claude Code and DSH profiles
   on the machine, reuses an agent Chrome that is already running, and prints the sign-in steps.
+- A documentation set: `docs/architecture.md` (how the pieces fit), `docs/mcp-tools.md` (every tool, its signature and
+  its error strings), `docs/looker-export.md` (the export, its verification recipe and the reference numbers),
+  `docs/troubleshooting.md` (symptom to fix) and `docs/development.md` (the dev loop and the release flow).
+- `AGENTS.md`, for agents working in this repository.
+- A second skill, `.claude/skills/looker-report-export`, for the export-and-verify workflow, and a fuller
+  `.claude/skills/agent-browser` with the tool reference, the decision rules and the failure modes.
 
 ### Fixed
 - Google Chrome is now found on macOS. The runtime only looked for Windows and Linux, so an install on macOS

@@ -169,6 +169,19 @@ page with **all dimensions plus Record Count**, sorted on every dimension, 50k r
 into raw rows, and nulls are re-inserted from `nullIndex`. It sees only what you can see as a viewer, and only the
 datasources used on the page you open. It depends on undocumented endpoints, so expect breakage when Google changes them.
 
+## Documentation
+
+| Document | Read it when |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How the pieces fit, what lives on disk, where to add a tool |
+| [docs/mcp-tools.md](docs/mcp-tools.md) | You are calling the tools: exact signatures, return shapes, error strings |
+| [docs/looker-export.md](docs/looker-export.md) | You are exporting a report, or a number looks wrong |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Something failed: symptom → cause → fix |
+| [docs/development.md](docs/development.md) | You are changing the code or cutting a release |
+| [docs/vps.md](docs/vps.md) | You are running it on a server with no display |
+| [docs/findings.md](docs/findings.md) | You want to know *why* the design is like this; it is the experiment log |
+| [AGENTS.md](AGENTS.md) | You are an agent working in this repository |
+
 ## Benchmark
 
 Same tasks as [dev.to "16MB vs 1.2GB"](https://dev.to/atani/16mb-vs-12gb-benchmarking-5-ai-browser-automation-tools-34pm).
