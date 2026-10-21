@@ -26,8 +26,9 @@ The [research log](docs/findings.md) has the details. In short:
   bound to the device (DBSC, a TPM-held key). Transplanted cookies land on the account chooser, headless or headful.
 - **The fix is to sign in once inside a dedicated agent profile with DBSC disabled.** The agent then reuses that
   profile, headless.
-- **One Chrome process owns the profile for its whole life, and agents attach over CDP.** In testing, copying the
-  profile or reusing its cookies elsewhere got the session revoked.
+- **One Chrome process owns the profile for its whole life, and agents attach over CDP.** In testing, a copied
+  profile folder and injected cookies both failed; which step killed the session was never isolated, so both are
+  off limits.
 - **A server without a display can complete the sign-in.** `ahb login-view` streams the headless tab to your
   browser through an SSH tunnel. This was tested in a display-less Debian container: sign-in, restart, and a 212k-row export.
 
@@ -168,6 +169,19 @@ It opens the report as you and captures one real `batchedDataV2` request. It the
 page with **all dimensions plus Record Count**, sorted on every dimension, 50k rows per page. Counts are expanded back
 into raw rows, and nulls are re-inserted from `nullIndex`. It sees only what you can see as a viewer, and only the
 datasources used on the page you open. It depends on undocumented endpoints, so expect breakage when Google changes them.
+
+## Documentation
+
+| Document | Read it when |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How the pieces fit, what lives on disk, where to add a tool |
+| [docs/mcp-tools.md](docs/mcp-tools.md) | You are calling the tools: exact signatures, return shapes, error strings |
+| [docs/looker-export.md](docs/looker-export.md) | You are exporting a report, or a number looks wrong |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Something failed: symptom → cause → fix |
+| [docs/development.md](docs/development.md) | You are changing the code or cutting a release |
+| [docs/vps.md](docs/vps.md) | You are running it on a server with no display |
+| [docs/findings.md](docs/findings.md) | You want to know *why* the design is like this; it is the experiment log |
+| [AGENTS.md](AGENTS.md) | You are an agent working in this repository |
 
 ## Benchmark
 
