@@ -5,6 +5,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `mcp.example.json`: a ready-to-copy MCP client config, with a test that keeps its variable names and defaults in
+  sync with `config.py`.
+
 ## [0.2.0] - 2026-10-21
 
 ### Changed
