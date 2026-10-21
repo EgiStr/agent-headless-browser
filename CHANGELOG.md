@@ -8,6 +8,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - `mcp.example.json`: a ready-to-copy MCP client config, with a test that keeps its variable names and defaults in
   sync with `config.py`.
+- A one-click installer for macOS, Linux and Windows (`scripts/install.sh`, `scripts/install.ps1`, `scripts/install.cmd`).
+  It checks the prerequisites, installs the package, registers the MCP server with the Claude Code and DSH profiles
+  on the machine, reuses an agent Chrome that is already running, and prints the sign-in steps.
+
+### Fixed
+- Google Chrome is now found on macOS. The runtime only looked for Windows and Linux, so an install on macOS
+  succeeded and then failed at `ahb start`.
+- The Chrome on macOS no longer sends a Linux user agent.
+- Chrome is now found in the per-user AppData directory, where the consumer Windows installer puts it, and in the
+  fixed Linux paths, which are not always on `PATH`.
+- The MCP server is registered with the port and profile the installer chose. Without them it started on the
+  default profile, which is a different Chrome than the one that was set up.
 
 ## [0.2.0] - 2026-10-21
 
