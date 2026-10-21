@@ -1,6 +1,6 @@
 ---
 name: agent-browser
-description: Use when a task needs the user's own signed-in Google session — a Looker Studio / Data Studio report, Google Drive, Sheets, Gmail, or any page shared only with that account — or when the agent Chrome has to be started, stopped, re-logged-in or health-checked. Also use when an MCP client cannot see the agent-browser tools, or when a report returns fewer rows or datasources than it shows by hand.
+description: Use when a task needs the user's own signed-in Google session — a Looker Studio / Data Studio report, Google Drive, Sheets, Gmail, or any page shared only with that account — or when the agent Chrome must be started, stopped, re-logged-in or health-checked. Also use when a client cannot see the agent-browser tools, or a report returns fewer rows than it shows.
 ---
 
 # agent-browser (logged-in headless Chrome)
@@ -78,9 +78,10 @@ looker_export(report_url, out_dir)   → per datasource: name, csv_path, raw_row
 ```
 
 - Only the datasources **used on the page you open** are captured. A multi-page report needs one call per page URL
-  (`…/reporting/<id>/page/<pageId>`).
+  (`…/reporting/<id>/page/<pageId>`), and **one `out_dir` per page** — same-named datasources would overwrite each other.
 - Two files per datasource: `<name>.csv` (raw rows) and `<name>_grouped.csv` (plus a `record_count` column).
 - The export **ignores the report's filters**: it is the whole datasource, not the filtered view.
+- Give `out_dir` an **absolute** path: a relative one resolves against the MCP server's working directory.
 
 ## Rules that keep the session alive
 
