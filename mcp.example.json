@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent-browser": {
+      "command": "ahb-mcp",
+      "args": [],
+      "env": {
+        "AHB_PORT": "9333",
+        "AHB_PROFILE_DIR": "~/.agent-headless-browser/profile",
+        "AHB_OUT_DIR": "out"
+      }
+    }
+  }
+}

@@ -80,6 +80,14 @@ To run it as a service, see [docs/vps.md](docs/vps.md). It covers systemd units 
 claude mcp add -s user agent-browser -- ahb-mcp
 ```
 
+Clients that read a JSON config can copy [`mcp.example.json`](mcp.example.json) and adjust the paths. The variable
+names in it are the ones the server actually reads: a name the server does not know is ignored without a warning, so
+a hand-written config with a stale name quietly falls back to the defaults.
+
+`ahb-mcp` has to be on the client's `PATH`. A client that spawns the server with an environment of its own, instead of
+inheriting the parent's, may not find it on Windows: point `command` at the absolute path of `ahb-mcp.exe`, or at
+`python` with the args `-m agent_headless_browser.mcp_server`.
+
 | Tool | What it does |
 |---|---|
 | `browser_status` | Whether Chrome is running and headless, and which Google accounts are signed in |
