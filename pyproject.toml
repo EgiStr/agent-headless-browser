@@ -41,6 +41,7 @@ dev = [
   "mypy>=1.11",
   "pre-commit>=3.8",
   "psutil>=5.9",
+  "pyyaml>=6",
 ]
 
 [project.scripts]

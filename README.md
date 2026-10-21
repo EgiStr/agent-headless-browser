@@ -33,12 +33,47 @@ The [research log](docs/findings.md) has the details. In short:
 
 ## Install
 
-Needs Google Chrome (not Chromium) and Python 3.10+.
+Needs Google Chrome (not Chromium). Python 3.10+ is used when the machine has
+one; the installer can also bring its own.
+
+### One click
+
+macOS or Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EgiStr/agent-headless-browser/main/scripts/install.sh | sh
+```
+
+Windows, in PowerShell:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/EgiStr/agent-headless-browser/main/scripts/install.ps1 | iex
+```
+
+Or clone the repo and double-click `scripts\install.cmd`.
+
+The installer checks the prerequisites, installs the package with `uv` (or
+`pipx`, or `pip`), registers the MCP server with the Claude Code and DSH
+profiles it finds on the machine, and prints the sign-in steps. It never signs
+in for you: that step is yours.
+
+```bash
+python scripts/install.py --dry-run    # show what it would do, change nothing
+```
+
+It is safe to run again after an update, and it reuses an agent Chrome that is
+already running instead of starting a second one.
+
+### By hand
 
 ```bash
 pipx install git+https://github.com/EgiStr/agent-headless-browser
 # or, from a clone:  pip install -e ".[dev]"
 ```
+
+Then point an MCP client at it, for example
+`claude mcp add -s user agent-browser -- ahb-mcp`. A ready-to-copy config is in
+[`mcp.example.json`](mcp.example.json).
 
 ## Usage
 

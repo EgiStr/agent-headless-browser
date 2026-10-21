@@ -8,6 +8,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 - `mcp.example.json`: a ready-to-copy MCP client config, with a test that keeps its variable names and defaults in
   sync with `config.py`.
+- A one-click installer for macOS, Linux and Windows (`scripts/install.sh`, `scripts/install.ps1`, `scripts/install.cmd`).
+  It checks the prerequisites, installs the package, registers the MCP server with the Claude Code and DSH profiles
+  on the machine, reuses an agent Chrome that is already running, and prints the sign-in steps.
 
 ## [0.2.0] - 2026-10-21
 
