@@ -83,10 +83,39 @@ def _no_chrome_anywhere(monkeypatch, platform_name: str) -> None:
 
 
 def test_windows_chrome_paths_match_the_installer():
-    assert {str(path) for path in chrome.WINDOWS_CHROME} == {
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    }
+    paths = {str(path) for path in chrome.WINDOWS_CHROME}
+    assert r"C:\Program Files\Google\Chrome\Application\chrome.exe" in paths
+    assert r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" in paths
+
+
+def test_windows_chrome_also_looks_in_the_users_own_appdata(monkeypatch, tmp_path):
+    """The consumer Chrome installer puts it there, not in Program Files."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    per_user = tmp_path / "Google" / "Chrome" / "Application" / "chrome.exe"
+    assert per_user in chrome._windows_chrome_paths()
+
+
+def test_find_chrome_windows_uses_the_users_own_appdata(monkeypatch, tmp_path):
+    monkeypatch.setattr(chrome.sys, "platform", "win32")
+    per_user = tmp_path / "Google" / "Chrome" / "Application" / "chrome.exe"
+    per_user.parent.mkdir(parents=True)
+    per_user.touch()
+    monkeypatch.setattr(chrome, "WINDOWS_CHROME", (tmp_path / "missing" / "chrome.exe", per_user))
+    assert chrome.find_chrome() == str(per_user)
+
+
+def test_linux_chrome_paths_match_the_installer():
+    assert tuple(chrome.LINUX_CHROME_PATHS) == (
+        Path("/usr/bin/google-chrome"),
+        Path("/usr/bin/google-chrome-stable"),
+        Path("/opt/google/chrome/chrome"),
+    )
+
+
+def test_user_agent_names_the_platform_it_runs_on():
+    assert "Windows NT" in chrome.user_agent("155.0.0.0", system="Windows")
+    assert "Macintosh" in chrome.user_agent("155.0.0.0", system="Darwin")
+    assert "X11; Linux" in chrome.user_agent("155.0.0.0", system="Linux")
 
 
 def test_macos_chrome_paths_match_the_installer():

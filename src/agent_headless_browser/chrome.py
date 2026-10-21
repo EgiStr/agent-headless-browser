@@ -31,16 +31,36 @@ from .config import Settings
 LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https://myaccount.google.com/"
 MODE_FILE = "agent-mode"
 CHROME_DOWNLOAD_URL = "https://www.google.com/chrome/"
+
+
+def _windows_chrome_paths() -> tuple[Path, ...]:
+    """Where Chrome lives on Windows.
+
+    The consumer installer puts it in the user's own AppData, not in Program
+    Files, so that location has to be in the list too.
+    """
+    paths = [
+        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+    ]
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        paths.append(Path(local) / "Google" / "Chrome" / "Application" / "chrome.exe")
+    return tuple(paths)
+
+
 # The same places scripts/install.py looks, so installer and runtime agree on where Chrome is.
-WINDOWS_CHROME = (
-    Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
-    Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
-)
+WINDOWS_CHROME = _windows_chrome_paths()
 MACOS_CHROME = (
     Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     Path("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
 )
 WINDOWS_CHROME_COMMANDS = ("chrome.exe",)
+LINUX_CHROME_PATHS = (
+    Path("/usr/bin/google-chrome"),
+    Path("/usr/bin/google-chrome-stable"),
+    Path("/opt/google/chrome/chrome"),
+)
 LINUX_CHROME = ("google-chrome", "google-chrome-stable")
 
 
@@ -81,8 +101,10 @@ def find_chrome() -> str:
         found = _first_existing(MACOS_CHROME)
         where = "/Applications"
     elif sys.platform.startswith("linux"):
-        found = _first_on_path(LINUX_CHROME)
-        where = "PATH"
+        # the fixed paths first, then PATH: a Chrome that is not on PATH is
+        # still a Chrome
+        found = _first_existing(LINUX_CHROME_PATHS) or _first_on_path(LINUX_CHROME)
+        where = "the usual Linux paths and PATH"
     else:
         raise ChromeError(f"Google Chrome is not supported on {sys.platform}")
     if found is None:
@@ -105,13 +127,16 @@ def user_agent(version: str, system: str | None = None, machine: str | None = No
     """The UA headful Chrome sends.
 
     Headless Chrome says ``HeadlessChrome``, which Google's sign-in page may refuse.
+    The platform has to match the one Chrome really runs on: a macOS Chrome that
+    claims to be Linux is the kind of mismatch Google looks at.
     """
     system = system or platform.system()
-    os_part = (
-        "Windows NT 10.0; Win64; x64"
-        if system == "Windows"
-        else f"X11; Linux {machine or platform.machine()}"
-    )
+    if system == "Windows":
+        os_part = "Windows NT 10.0; Win64; x64"
+    elif system == "Darwin":
+        os_part = "Macintosh; Intel Mac OS X 10_15_7"
+    else:
+        os_part = f"X11; Linux {machine or platform.machine()}"
     major = version.split(".")[0]
     return (
         f"Mozilla/5.0 ({os_part}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"

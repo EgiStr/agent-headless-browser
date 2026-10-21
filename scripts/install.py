@@ -107,11 +107,24 @@ def python_is_supported(version: tuple[int, ...]) -> bool:
     return version[:2] >= MIN_PYTHON
 
 
+def chrome_paths(system: str) -> list[Path]:
+    """Where Chrome may live, in the order the runtime looks.
+
+    The consumer Chrome installer puts it in the user's own AppData, not in
+    Program Files, so that location has to be in the list too.
+    """
+    paths = [Path(raw).expanduser() for raw in CHROME_PATHS.get(system, [])]
+    if system == "Windows":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            paths.append(Path(local) / "Google" / "Chrome" / "Application" / "chrome.exe")
+    return paths
+
+
 def find_chrome() -> Path | None:
     """The installed Google Chrome, or None."""
     system = platform.system()
-    for raw in CHROME_PATHS.get(system, []):
-        candidate = Path(raw).expanduser()
+    for candidate in chrome_paths(system):
         if candidate.exists():
             return candidate
     for command in CHROME_COMMANDS.get(system, []):
@@ -173,6 +186,21 @@ def run(
 def which(name: str) -> str | None:
     found = shutil.which(name)
     return found
+
+
+def backup_file(path: Path) -> Path:
+    """A copy of the file that a later run will not overwrite.
+
+    Every run keeps its own backup, so the state from before the first run is
+    still there after the third one.
+    """
+    backup = path.with_name(path.name + ".install.bak")
+    index = 1
+    while backup.exists():
+        backup = path.with_name(f"{path.name}.install.bak.{index}")
+        index += 1
+    backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    return backup
 
 
 def cdp_is_up(port: int) -> bool:
@@ -243,12 +271,17 @@ def running_agent_profile(port: int) -> Path | None:
 
 
 def choose_profile_dir(explicit: str | None, port: int) -> Path:
-    """Where the Google session should live."""
+    """Where the Google session should live.
+
+    The path is absolute: it ends up in the config of an MCP client that runs
+    with a different working directory, and a relative path would point it
+    somewhere else entirely.
+    """
     if explicit:
-        return Path(explicit).expanduser()
+        return Path(explicit).expanduser().resolve()
     from_env = os.environ.get("AHB_PROFILE_DIR")
     if from_env:
-        return Path(from_env).expanduser()
+        return Path(from_env).expanduser().resolve()
     running = running_agent_profile(port)
     if running:
         return running
@@ -536,8 +569,7 @@ def configure_dsh(
         if dry_run:
             written = True
             continue
-        backup = patch.with_name(patch.name + ".install.bak")
-        backup.write_text(text, encoding="utf-8")
+        backup = backup_file(patch)
         patch.write_text("".join(new_lines), encoding="utf-8")
         console.ok(f"wrote {patch} (the old one is kept as {backup.name})")
         written = True
@@ -609,21 +641,27 @@ def write_generic_snippet(
     """A config file for MCP clients this installer does not know.
 
     An existing file keeps the servers it already had: this one owns only its
-    own entry. The old file is kept next to it.
+    own entry. The old file is kept next to it. A file this installer cannot
+    read is never overwritten, because the servers in it are unknown.
     """
     target = Path.home() / ".agent-headless-browser" / "mcp.json"
     target.parent.mkdir(parents=True, exist_ok=True)
+    document: dict[str, object] = {}
     servers: dict[str, object] = {}
     if target.is_file():
         text = target.read_text(encoding="utf-8")
+        backup = backup_file(target)
         try:
             existing = json.loads(text)
         except json.JSONDecodeError:
-            existing = {}
+            existing = None
         if isinstance(existing, dict) and isinstance(existing.get("mcpServers"), dict):
+            document = dict(existing)
             servers = dict(existing["mcpServers"])
-        backup = target.with_name(target.name + ".install.bak")
-        backup.write_text(text, encoding="utf-8")
+        else:
+            console.warn(f"{target} is not a config this installer understands; not overwriting it")
+            console.plain(f"       the old file is kept as {backup.name}")
+            target = target.with_name(target.name + ".new")
     servers[SERVER_NAME] = {
         "command": str(executable),
         "args": [],
@@ -633,7 +671,8 @@ def write_generic_snippet(
             "AHB_OUT_DIR": str(out_dir),
         },
     }
-    target.write_text(json.dumps({"mcpServers": servers}, indent=2) + "\n", encoding="utf-8")
+    document["mcpServers"] = servers
+    target.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     console.ok(f"wrote a config for other MCP clients: {target}")
     return target
 

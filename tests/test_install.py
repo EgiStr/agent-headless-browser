@@ -273,12 +273,19 @@ def test_running_agent_profile_is_none_when_cdp_is_down(monkeypatch):
 
 def test_choose_profile_dir_prefers_the_explicit_path(monkeypatch):
     monkeypatch.delenv("AHB_PROFILE_DIR", raising=False)
-    assert install.choose_profile_dir("/tmp/explicit", 9333) == Path("/tmp/explicit")
+    assert install.choose_profile_dir("/tmp/explicit", 9333) == Path("/tmp/explicit").resolve()
 
 
 def test_choose_profile_dir_uses_the_environment(monkeypatch):
     monkeypatch.setenv("AHB_PROFILE_DIR", "/tmp/from-env")
-    assert install.choose_profile_dir(None, 9333) == Path("/tmp/from-env")
+    assert install.choose_profile_dir(None, 9333) == Path("/tmp/from-env").resolve()
+
+
+def test_choose_profile_dir_resolves_to_an_absolute_path(monkeypatch, tmp_path):
+    """The path ends up in the config of a client with another working directory."""
+    monkeypatch.delenv("AHB_PROFILE_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert install.choose_profile_dir("relative/profile", 9333).is_absolute()
 
 
 def test_choose_profile_dir_reuses_the_running_agent_profile(monkeypatch, tmp_path):
@@ -385,6 +392,36 @@ def test_write_generic_snippet_keeps_the_other_servers(tmp_path, monkeypatch):
     assert (home / "mcp.json.install.bak").is_file()
 
 
+def test_write_generic_snippet_leaves_a_config_it_cannot_read_alone(tmp_path, monkeypatch):
+    """The servers in a file that does not parse are unknown, so it is not replaced."""
+    monkeypatch.setattr(install.Path, "home", classmethod(lambda cls: tmp_path))
+    home = tmp_path / ".agent-headless-browser"
+    home.mkdir(parents=True)
+    target = home / "mcp.json"
+    target.write_text("{not json", encoding="utf-8")
+    console = install.Console(quiet=True)
+
+    written = install.write_generic_snippet(
+        Path("/usr/local/bin/ahb-mcp"), Path("/p"), Path("/out"), console, 9333
+    )
+    assert target.read_text(encoding="utf-8") == "{not json"
+    assert written != target
+    assert written.is_file()
+
+
+def test_a_second_run_keeps_the_first_backup(tmp_path, monkeypatch):
+    """Every run keeps its own backup, so the oldest state is still there."""
+    patch = tmp_path / "cordis.patch.yml"
+    patch.write_text(PATCH, encoding="utf-8")
+    monkeypatch.setattr(install, "dsh_patch_files", lambda: [patch])
+    console = install.Console(quiet=True)
+
+    install.configure_dsh(Path("/bin/ahb-mcp"), Path("/p"), Path("out"), console, False)
+    install.configure_dsh(Path("/bin/ahb-mcp"), Path("/p"), Path("out"), console, False)
+    backups = sorted(p.name for p in tmp_path.glob("cordis.patch.yml.install.bak*"))
+    assert backups == ["cordis.patch.yml.install.bak", "cordis.patch.yml.install.bak.1"]
+
+
 def test_verify_reports_a_failing_command(monkeypatch):
     """A command that fails is not the same as a browser that is not running."""
 
@@ -443,8 +480,11 @@ def test_the_installer_and_the_runtime_look_in_the_same_places():
     """A browser the runtime cannot launch is of no use to the user."""
     from agent_headless_browser import chrome
 
-    assert {str(Path(p)) for p in install.CHROME_PATHS["Windows"]} == {str(p) for p in chrome.WINDOWS_CHROME}
-    assert {str(Path(p)) for p in install.CHROME_PATHS["Darwin"]} == {str(p) for p in chrome.MACOS_CHROME}
+    assert {str(p) for p in install.chrome_paths("Windows")} == {str(p) for p in chrome.WINDOWS_CHROME}
+    assert {str(p.expanduser()) for p in install.chrome_paths("Darwin")} == {
+        str(p.expanduser()) for p in chrome.MACOS_CHROME
+    }
+    assert {str(p) for p in install.chrome_paths("Linux")} == {str(p) for p in chrome.LINUX_CHROME_PATHS}
     assert tuple(install.CHROME_COMMANDS["Windows"]) == tuple(chrome.WINDOWS_CHROME_COMMANDS)
     assert tuple(install.CHROME_COMMANDS["Linux"]) == tuple(chrome.LINUX_CHROME)
     # the runtime needs real Chrome, so the installer must not accept Chromium

@@ -14,8 +14,19 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
 set CODE=%ERRORLEVEL%
 echo.
+
+rem A dry run changes nothing, so it must not say that it installed anything.
+set "AHB_DRYRUN="
+for %%A in (%*) do (
+  if /I "%%~A"=="--dry-run" set "AHB_DRYRUN=1"
+)
+
 if "%CODE%"=="0" (
-  echo   Done. Restart your MCP client so it picks up the new server.
+  if defined AHB_DRYRUN (
+    echo   Dry run finished. Nothing was installed or registered.
+  ) else (
+    echo   Done. Restart your MCP client so it picks up the new server.
+  )
 ) else (
   echo   The installer failed. Read the messages above.
 )
