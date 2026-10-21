@@ -15,6 +15,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Google Chrome is now found on macOS. The runtime only looked for Windows and Linux, so an install on macOS
   succeeded and then failed at `ahb start`.
+- The Chrome on macOS no longer sends a Linux user agent.
+- Chrome is now found in the per-user AppData directory, where the consumer Windows installer puts it, and in the
+  fixed Linux paths, which are not always on `PATH`.
 - The MCP server is registered with the port and profile the installer chose. Without them it started on the
   default profile, which is a different Chrome than the one that was set up.
 
