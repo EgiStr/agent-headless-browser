@@ -44,7 +44,7 @@ monkeypatch.setattr(chrome, "LINUX_CHROME_PATHS", (Path("/nonexistent/google-chr
 
 # 2. monkeypatch.setenv("PATH", value, prepend=os.pathsep) PREPENDS. It keeps the
 #    real PATH, so a real `ahb-mcp` on the machine can answer first.
-monkeypatch.setenv("PATH", str(tmp_path))            # replace, do not prepend
+monkeypatch.setenv("PATH", str(tmp_path))  # replace, do not prepend
 
 # 3. shutil.which needs the exec bit on POSIX.
 script.chmod(0o755)
