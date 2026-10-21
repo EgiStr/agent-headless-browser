@@ -30,7 +30,17 @@ from .config import Settings
 
 LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https://myaccount.google.com/"
 MODE_FILE = "agent-mode"
-WINDOWS_CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
+CHROME_DOWNLOAD_URL = "https://www.google.com/chrome/"
+# The same places scripts/install.py looks, so installer and runtime agree on where Chrome is.
+WINDOWS_CHROME = (
+    Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+    Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+)
+MACOS_CHROME = (
+    Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    Path("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+)
+WINDOWS_CHROME_COMMANDS = ("chrome.exe",)
 LINUX_CHROME = ("google-chrome", "google-chrome-stable")
 
 
@@ -38,14 +48,46 @@ class ChromeError(RuntimeError):
     """Chrome could not be found, started or stopped."""
 
 
-def find_chrome() -> str:
-    """Path of the installed Google Chrome (not Chromium: patchright and Google expect real Chrome)."""
-    if sys.platform == "win32" and WINDOWS_CHROME.exists():
-        return str(WINDOWS_CHROME)
-    for name in LINUX_CHROME:
+def _first_existing(paths: tuple[Path, ...]) -> str | None:
+    """First of ``paths`` that exists, with ``~`` expanded to the user's home.
+
+    The home is not always ``/Users/me``: a macOS user may install Chrome in their own
+    ``~/Applications``, and their home directory lives somewhere else.
+    """
+    for path in paths:
+        candidate = path.expanduser()
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _first_on_path(names: tuple[str, ...]) -> str | None:
+    """First of ``names`` that resolves to an executable on PATH."""
+    for name in names:
         if found := shutil.which(name):
             return found
-    raise ChromeError("Google Chrome not found; install it from https://www.google.com/chrome/")
+    return None
+
+
+def find_chrome() -> str:
+    """Path of the installed Google Chrome (not Chromium: patchright and Google expect real Chrome)."""
+    found: str | None
+    if sys.platform == "win32":
+        # the Program Files paths first, then PATH: an installer that put
+        # Chrome somewhere else still put it on PATH
+        found = _first_existing(WINDOWS_CHROME) or _first_on_path(WINDOWS_CHROME_COMMANDS)
+        where = "Program Files and PATH"
+    elif sys.platform == "darwin":
+        found = _first_existing(MACOS_CHROME)
+        where = "/Applications"
+    elif sys.platform.startswith("linux"):
+        found = _first_on_path(LINUX_CHROME)
+        where = "PATH"
+    else:
+        raise ChromeError(f"Google Chrome is not supported on {sys.platform}")
+    if found is None:
+        raise ChromeError(f"Google Chrome not found (checked {where}); install it from {CHROME_DOWNLOAD_URL}")
+    return found
 
 
 def chrome_version(chrome: str) -> str | None:

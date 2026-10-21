@@ -14,10 +14,23 @@ $Base = if ($env:AHB_INSTALL_BASE_URL) {
     'https://raw.githubusercontent.com/EgiStr/agent-headless-browser/main/scripts'
 }
 
+# The script may be run from a file on disk or piped into iex, where there is
+# no script path at all. Only fall back to the invocation path when one
+# exists: Split-Path on nothing throws and would kill the installer before
+# it even starts.
+$scriptPath = $MyInvocation.MyCommand.Path
 $here = $PSScriptRoot
-if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
-$installer = if ($here) { Join-Path $here 'install.py' } else { $null }
-if (-not $installer -or -not (Test-Path $installer)) {
+if (-not $here -and $scriptPath) {
+    $here = Split-Path -Parent $scriptPath
+}
+if ($here -and -not (Test-Path -LiteralPath $here -PathType Container)) { $here = $null }
+
+$installer = $null
+if ($here) {
+    $local = Join-Path $here 'install.py'
+    if (Test-Path -LiteralPath $local -PathType Leaf) { $installer = $local }
+}
+if (-not $installer) {
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('ahb-install-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
     $installer = Join-Path $tmp 'install.py'
@@ -51,6 +64,12 @@ foreach ($candidate in $candidates) {
 if (-not $python) {
     $uv = Get-Command 'uv' -ErrorAction SilentlyContinue
     if (-not $uv) {
+        # A dry run must not change the machine, so it must not install uv.
+        if ($args -contains '--dry-run') {
+            Write-Host '==> would install uv (it can provide Python 3.12); a dry run changes nothing'
+            if ($scriptPath) { exit 0 }
+            return
+        }
         Write-Host '==> installing uv (it can provide Python 3.12)'
         Invoke-RestMethod 'https://astral.sh/uv/install.ps1' | Invoke-Expression
         $env:PATH = "$env:USERPROFILE\.local\bin;" + $env:PATH
@@ -59,11 +78,18 @@ if (-not $python) {
     if ($uv) {
         Write-Host '==> no Python 3.10+ found, using uv to provide one'
         & $uv.Source run --no-project --python 3.12 $installer @args
-        exit $LASTEXITCODE
+        $exitCode = $LASTEXITCODE
+    } else {
+        Write-Error 'no Python 3.10+ found and uv could not be installed' -ErrorAction Continue
+        $exitCode = 1
     }
-    Write-Error 'no Python 3.10+ found and uv could not be installed'
-    exit 1
+} else {
+    & $python[0] @($python[1]) $installer @args
+    $exitCode = $LASTEXITCODE
 }
 
-& $python[0] @($python[1]) $installer @args
-exit $LASTEXITCODE
+# Run as a file, exit with the installer's code. Piped into iex there is no
+# script to return from and exit would close the caller's session, so report
+# the failure as an error there instead.
+if ($scriptPath) { exit $exitCode }
+if ($exitCode -ne 0) { throw "installer failed with exit code $exitCode" }

@@ -29,12 +29,19 @@ from pathlib import Path
 PACKAGE = "agent-headless-browser"
 SERVER_NAME = "agent-browser"
 DSH_ENTRY_ID = "mcp-agent-browser"
+# The first and the last line of the block the installer writes. They are how
+# a later run finds its own entry again, to update it.
+DSH_ENTRY_COMMENT = "# agent-headless-browser - headless Chrome that stays signed in to your Google"
+DSH_ENTRY_LAST_LINE = "failOnStartupError: false"
 DEFAULT_SOURCE = "git+https://github.com/EgiStr/agent-headless-browser"
 RAW_BASE = "https://raw.githubusercontent.com/EgiStr/agent-headless-browser/main/scripts"
 MIN_PYTHON = (3, 10)
 IS_WINDOWS = os.name == "nt"
 IS_MACOS = sys.platform == "darwin"
 
+# Where the runtime looks for Chrome. The installer has to agree with it: a
+# browser the runtime cannot launch is of no use to the user. Chromium is not
+# in the list because the runtime needs real Chrome.
 CHROME_PATHS = {
     "Windows": [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -48,8 +55,8 @@ CHROME_PATHS = {
 }
 CHROME_COMMANDS = {
     "Windows": ["chrome.exe"],
-    "Darwin": ["google-chrome"],
-    "Linux": ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"],
+    "Darwin": [],
+    "Linux": ["google-chrome", "google-chrome-stable"],
 }
 
 
@@ -147,13 +154,19 @@ def resolve_executable(name: str) -> Path | None:
     return None
 
 
-def run(command: list[str], timeout: int = 600, check: bool = False) -> subprocess.CompletedProcess[str]:
+def run(
+    command: list[str],
+    timeout: int = 600,
+    check: bool = False,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
         timeout=timeout,
         check=check,
+        env=env,
     )
 
 
@@ -189,6 +202,29 @@ def process_command_lines() -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+USER_DATA_DIR_PATTERNS = (
+    re.compile(r'"--user-data-dir=([^"]+)"'),
+    re.compile(r'--user-data-dir="([^"]*)"'),
+    re.compile(r"--user-data-dir='([^']*)'"),
+    re.compile(r"--user-data-dir=(\S+)"),
+)
+
+
+def user_data_dir(command_line: str) -> str | None:
+    """The profile directory in a Chrome command line.
+
+    The directory may contain spaces, and the whole argument is then quoted, so
+    splitting the line on whitespace would cut the path in half.
+    """
+    for pattern in USER_DATA_DIR_PATTERNS:
+        match = pattern.search(command_line)
+        if match:
+            value = match.group(1).strip()
+            if value:
+                return value
+    return None
+
+
 def running_agent_profile(port: int) -> Path | None:
     """The profile of a Chrome that already serves CDP on ``port``.
 
@@ -200,11 +236,9 @@ def running_agent_profile(port: int) -> Path | None:
     for line in process_command_lines():
         if f"--remote-debugging-port={port}" not in line:
             continue
-        for part in line.split():
-            if part.startswith("--user-data-dir="):
-                value = part.split("=", 1)[1].strip('"')
-                if value:
-                    return Path(value)
+        value = user_data_dir(line)
+        if value:
+            return Path(value)
     return None
 
 
@@ -282,43 +316,95 @@ def install_package(source: str, console: Console, dry_run: bool) -> InstallResu
 # --- MCP client configuration ---------------------------------------------
 
 
-def dsh_entry_block(executable: Path, profile_dir: Path, out_dir: Path, port: int = 9333) -> str:
+def yaml_scalar(value: object) -> str:
+    """A YAML single-quoted scalar.
+
+    A quote inside the value is doubled, which is how YAML escapes it. Without
+    that, a profile directory with an apostrophe in its name produces a patch
+    file that no longer parses.
+    """
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def dsh_entry_block(
+    executable: Path, profile_dir: Path, out_dir: Path, port: int = 9333, indent: int = 4
+) -> str:
     """The cordis.patch.yml entry for this server, indented for the insert list."""
+    pad = " " * indent
     return (
-        "    # agent-headless-browser - headless Chrome that stays signed in to your Google\n"
-        "    # account. Added by scripts/install.py. Remove this block to uninstall.\n"
-        "    - id: mcp-agent-browser\n"
-        "      name: '@deepseek-ai/dsh-mcp-client'\n"
-        "      config:\n"
-        "        serverName: agent-browser\n"
-        "        transport: stdio\n"
-        f"        command: '{executable}'\n"
-        "        env:\n"
-        f"          AHB_PORT: '{port}'\n"
-        f"          AHB_PROFILE_DIR: '{profile_dir}'\n"
-        f"          AHB_OUT_DIR: '{out_dir}'\n"
-        "        toolCallTimeoutMs: 300000\n"
-        "        failOnStartupError: false\n"
+        f"{pad}{DSH_ENTRY_COMMENT}\n"
+        f"{pad}# account. Added by scripts/install.py. Remove this block to uninstall.\n"
+        f"{pad}- id: mcp-agent-browser\n"
+        f"{pad}  name: '@deepseek-ai/dsh-mcp-client'\n"
+        f"{pad}  config:\n"
+        f"{pad}    serverName: agent-browser\n"
+        f"{pad}    transport: stdio\n"
+        f"{pad}    command: {yaml_scalar(executable)}\n"
+        f"{pad}    env:\n"
+        f"{pad}      AHB_PORT: {yaml_scalar(port)}\n"
+        f"{pad}      AHB_PROFILE_DIR: {yaml_scalar(profile_dir)}\n"
+        f"{pad}      AHB_OUT_DIR: {yaml_scalar(out_dir)}\n"
+        f"{pad}    toolCallTimeoutMs: 300000\n"
+        f"{pad}    {DSH_ENTRY_LAST_LINE}\n"
     )
 
 
 def dsh_entry_present(text: str) -> bool:
-    return f"- id: {DSH_ENTRY_ID}" in text
+    """Is the entry already in the file?
+
+    A comment that mentions the id does not count, or the installer would
+    decide the profile is configured when it is not.
+    """
+    needle = f"- id: {DSH_ENTRY_ID}"
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == needle or stripped.startswith(needle + " "):
+            return True
+    return False
+
+
+def find_dsh_entry_span(lines: list[str]) -> tuple[int, int] | None:
+    """The line range of an entry this installer wrote, if it is there.
+
+    The block starts with the comment the installer writes and ends with the
+    last line of the entry, so both ends can be found again.
+    """
+    start = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if start is None:
+            if stripped.startswith(DSH_ENTRY_COMMENT):
+                start = index
+            continue
+        if stripped.startswith(DSH_ENTRY_LAST_LINE):
+            return (start, index + 1)
+    return None
+
+
+def count_dsh_entries(lines: list[str]) -> int:
+    """How many times the entry appears in the file."""
+    needle = f"- id: {DSH_ENTRY_ID}"
+    return sum(1 for line in lines if line.strip().startswith(needle))
 
 
 def dsh_structure(lines: list[str]) -> str:
-    """'insert' when the file has a top-level insert list, 'toplevel' otherwise.
+    """'insert', 'rootmap' or 'toplevel'.
 
-    A DSH patch file is a top-level YAML array. Some profiles keep the MCP
-    servers in an ``insert:`` list inside the first element, others leave the
-    array empty. The two need different edits, and guessing wrong breaks the
+    A DSH patch file is normally a top-level YAML array. Some profiles keep the
+    MCP servers in an ``insert:`` list inside the first element, some use a
+    top-level mapping with an ``insert:`` key, and others leave the array
+    empty. The three need different edits, and guessing wrong breaks the
     profile.
     """
     for line in lines:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        return "insert" if stripped == "- insert:" else "toplevel"
+        if stripped == "- insert:":
+            return "insert"
+        if stripped == "insert:":
+            return "rootmap"
+        return "toplevel"
     return "toplevel"
 
 
@@ -401,34 +487,52 @@ def configure_dsh(
     written = False
     for patch in patches:
         text = patch.read_text(encoding="utf-8")
-        if dsh_entry_present(text):
+        lines = text.splitlines(keepends=True)
+        structure = dsh_structure(lines)
+        present = dsh_entry_present(text)
+        # an entry this installer wrote earlier can be updated, so a re-run
+        # picks up a new path, port or profile
+        span = find_dsh_entry_span(lines) if present else None
+        if present and span is None:
             console.ok(f"DSH profile already configured: {patch}")
             written = True
             continue
-        lines = text.splitlines(keepends=True)
-        structure = dsh_structure(lines)
-        if structure == "insert":
-            index = find_dsh_insert_index(lines)
-            block = dsh_entry_block(executable, profile_dir, out_dir, port)
-            new_lines = [*lines[:index], block, *lines[index:]]
+        if structure in {"insert", "rootmap"}:
+            # a list under '- insert:' is indented by four, a list under a
+            # top-level 'insert:' key by two
+            indent = 4 if structure == "insert" else 2
+            block = dsh_entry_block(executable, profile_dir, out_dir, port, indent).splitlines(keepends=True)
+            if span is not None:
+                start, end = span
+                new_lines = [*lines[:start], *block, *lines[end:]]
+            else:
+                index = find_dsh_insert_index(lines)
+                new_lines = [*lines[:index], *block, *lines[index:]]
             expected_growth = 0
         else:
-            empty = find_empty_array_index(lines)
-            block = dsh_toplevel_block(executable, profile_dir, out_dir, port)
-            if empty is None:
-                if lines and not lines[-1].endswith("\n"):
-                    lines[-1] += "\n"
-                new_lines = [*lines, block]
+            block = dsh_toplevel_block(executable, profile_dir, out_dir, port).splitlines(keepends=True)
+            if span is not None:
+                start, end = span
+                new_lines = [*lines[:start], *block, *lines[end:]]
             else:
-                # replace the empty array, never append after it: a flow
-                # sequence cannot be followed by a block sequence
-                new_lines = [*lines[:empty], block, *lines[empty + 1 :]]
-            expected_growth = 1
+                empty = find_empty_array_index(lines)
+                if empty is None:
+                    if lines and not lines[-1].endswith("\n"):
+                        lines[-1] += "\n"
+                    new_lines = [*lines, *block]
+                else:
+                    # replace the empty array, never append after it: a flow
+                    # sequence cannot be followed by a block sequence
+                    new_lines = [*lines[:empty], *block, *lines[empty + 1 :]]
+            expected_growth = 0 if span is not None else 1
         growth = top_level_entries(new_lines) - top_level_entries(lines)
         if growth != expected_growth:
             console.warn(f"skipping {patch}: its shape is not one this installer recognises")
             continue
-        console.step(f"adding the MCP server to {patch}")
+        if count_dsh_entries(new_lines) != 1:
+            console.warn(f"skipping {patch}: the result would not have exactly one entry")
+            continue
+        console.step(f"{'updating' if present else 'adding'} the MCP server in {patch}")
         if dry_run:
             written = True
             continue
@@ -454,16 +558,36 @@ def warn_on_duplicate_scopes(console: Console) -> None:
         console.plain("         claude mcp remove agent-browser -s project")
 
 
-def configure_claude_code(executable: Path, console: Console, dry_run: bool) -> bool:
+def configure_claude_code(
+    executable: Path,
+    profile_dir: Path,
+    out_dir: Path,
+    console: Console,
+    dry_run: bool,
+    port: int = 9333,
+) -> bool:
+    """Register the server in Claude Code.
+
+    The environment has to go with it. Without it the server starts on the
+    default port and the default profile, which is a different Chrome than the
+    one this installer just set up.
+    """
     claude = which("claude")
     if not claude:
         console.warn("no 'claude' CLI found; skipping Claude Code")
         return False
+    env = [
+        "-e",
+        f"AHB_PORT={port}",
+        f"AHB_PROFILE_DIR={profile_dir}",
+        f"AHB_OUT_DIR={out_dir}",
+    ]
+    add = [claude, "mcp", "add", "-s", "user", SERVER_NAME, *env, "--", str(executable)]
     console.step("registering the MCP server in Claude Code (user scope)")
     if dry_run:
-        console.ok(f"would run: claude mcp add -s user {SERVER_NAME} -- {executable}")
+        console.ok(f"would run: claude mcp add -s user {SERVER_NAME} -e ... -- {executable}")
         return True
-    result = run([claude, "mcp", "add", "-s", "user", SERVER_NAME, "--", str(executable)])
+    result = run(add)
     if result.returncode != 0:
         combined = f"{result.stderr or ''}\n{result.stdout or ''}".lower()
         if "already exists" in combined:
@@ -471,7 +595,7 @@ def configure_claude_code(executable: Path, console: Console, dry_run: bool) -> 
             console.step("the MCP server is already in Claude Code; updating it")
             removed = run([claude, "mcp", "remove", "-s", "user", SERVER_NAME])
             if removed.returncode == 0:
-                result = run([claude, "mcp", "add", "-s", "user", SERVER_NAME, "--", str(executable)])
+                result = run(add)
     if result.returncode != 0:
         console.warn(f"claude mcp add failed: {(result.stderr or result.stdout).strip()[:200]}")
         return False
@@ -482,23 +606,34 @@ def configure_claude_code(executable: Path, console: Console, dry_run: bool) -> 
 def write_generic_snippet(
     executable: Path, profile_dir: Path, out_dir: Path, console: Console, port: int = 9333
 ) -> Path:
-    """A config file for MCP clients this installer does not know."""
-    payload = {
-        "mcpServers": {
-            SERVER_NAME: {
-                "command": str(executable),
-                "args": [],
-                "env": {
-                    "AHB_PORT": str(port),
-                    "AHB_PROFILE_DIR": str(profile_dir),
-                    "AHB_OUT_DIR": str(out_dir),
-                },
-            }
-        }
-    }
+    """A config file for MCP clients this installer does not know.
+
+    An existing file keeps the servers it already had: this one owns only its
+    own entry. The old file is kept next to it.
+    """
     target = Path.home() / ".agent-headless-browser" / "mcp.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    servers: dict[str, object] = {}
+    if target.is_file():
+        text = target.read_text(encoding="utf-8")
+        try:
+            existing = json.loads(text)
+        except json.JSONDecodeError:
+            existing = {}
+        if isinstance(existing, dict) and isinstance(existing.get("mcpServers"), dict):
+            servers = dict(existing["mcpServers"])
+        backup = target.with_name(target.name + ".install.bak")
+        backup.write_text(text, encoding="utf-8")
+    servers[SERVER_NAME] = {
+        "command": str(executable),
+        "args": [],
+        "env": {
+            "AHB_PORT": str(port),
+            "AHB_PROFILE_DIR": str(profile_dir),
+            "AHB_OUT_DIR": str(out_dir),
+        },
+    }
+    target.write_text(json.dumps({"mcpServers": servers}, indent=2) + "\n", encoding="utf-8")
     console.ok(f"wrote a config for other MCP clients: {target}")
     return target
 
@@ -511,6 +646,7 @@ class Status:
     running: bool
     accounts: list[str]
     headless: bool | None
+    error: str | None = None
 
     @property
     def signed_in(self) -> bool:
@@ -533,7 +669,13 @@ def parse_status(text: str) -> Status:
     )
 
 
-def verify(cli: Path | None, console: Console, dry_run: bool) -> Status:
+def verify(
+    cli: Path | None,
+    console: Console,
+    dry_run: bool,
+    profile_dir: Path | None = None,
+    port: int = 9333,
+) -> Status:
     """Check the install with the ahb CLI.
 
     This has to be the CLI, not ahb-mcp: ahb-mcp is the MCP server and it
@@ -542,8 +684,23 @@ def verify(cli: Path | None, console: Console, dry_run: bool) -> Status:
     console.step("verifying")
     if dry_run:
         return Status(running=False, accounts=[], headless=None)
-    command = [str(cli)] if cli else ["ahb"]
-    result = run([*command, "status"])
+    if cli is None:
+        found = which("ahb")
+        if not found:
+            console.warn("could not find the ahb CLI; skipping the verification")
+            return Status(running=False, accounts=[], headless=None)
+        cli = Path(found)
+    # the CLI reads these from its environment, and it has to look at the
+    # Chrome this installer set up, not at some other one
+    env = dict(os.environ)
+    env["AHB_PORT"] = str(port)
+    if profile_dir is not None:
+        env["AHB_PROFILE_DIR"] = str(profile_dir)
+    result = run([str(cli), "status"], env=env)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()[:200]
+        console.warn(f"'ahb status' failed: {detail}")
+        return Status(running=False, accounts=[], headless=None, error=detail)
     status = parse_status(result.stdout)
     if not status.running:
         console.warn("the agent Chrome is not running yet (that is expected before sign-in)")
@@ -557,7 +714,7 @@ def verify(cli: Path | None, console: Console, dry_run: bool) -> Status:
 # --- next steps ------------------------------------------------------------
 
 
-def print_next_steps(console: Console, profile_dir: Path, has_display: bool) -> None:
+def print_next_steps(console: Console, profile_dir: Path, out_dir: Path, has_display: bool) -> None:
     console.plain()
     console.plain("Next: sign in to Google (one time, you do it yourself)")
     console.plain("---------------------------------------------------")
@@ -577,6 +734,8 @@ def print_next_steps(console: Console, profile_dir: Path, has_display: bool) -> 
     console.plain(f"The Google session lives in {profile_dir}. Treat that folder like a")
     console.plain("password: never copy it to another machine, never move it. A copied")
     console.plain("profile makes Google revoke the session.")
+    console.plain()
+    console.plain(f"Exports and logs go to {out_dir}.")
     default_profile = Path.home() / ".agent-headless-browser" / "profile"
     if profile_dir != default_profile:
         console.plain()
@@ -593,6 +752,17 @@ def print_next_steps(console: Console, profile_dir: Path, has_display: bool) -> 
 # --- main ------------------------------------------------------------------
 
 
+def port_number(text: str) -> int:
+    """A TCP port number, for argparse."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{text}' is not a port number") from None
+    if not 1 <= value <= 65535:
+        raise argparse.ArgumentTypeError("the port has to be between 1 and 65535")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="install.py", description="One-click installer for agent-headless-browser."
@@ -607,10 +777,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="where the Google session lives (default: ~/.agent-headless-browser/profile)",
     )
-    parser.add_argument("--out-dir", default=None, help="where exports and logs go (default: ./out)")
+    parser.add_argument(
+        "--out-dir",
+        default=None,
+        help="where exports and logs go (default: ~/.agent-headless-browser/out)",
+    )
     parser.add_argument(
         "--port",
-        type=int,
+        type=port_number,
         default=9333,
         help="the CDP port the agent Chrome uses (default: 9333)",
     )
@@ -625,7 +799,12 @@ def main(argv: list[str] | None = None) -> int:
     console = Console()
 
     profile_dir = choose_profile_dir(args.profile_dir, args.port)
-    out_dir = Path(args.out_dir or "out").expanduser()
+    # the configs are read by an MCP client that starts the server somewhere
+    # else, so a relative path would put the exports in the wrong place
+    if args.out_dir:
+        out_dir = Path(args.out_dir).expanduser().resolve()
+    else:
+        out_dir = Path.home() / ".agent-headless-browser" / "out"
 
     console.plain(f"agent-headless-browser installer ({platform.system()} {platform.machine()})")
     console.plain()
@@ -660,7 +839,10 @@ def main(argv: list[str] | None = None) -> int:
     except InstallerError as exc:
         console.fail(str(exc))
         return 1
-    console.ok(f"installed with {result.method} ({result.detail})")
+    if args.dry_run:
+        console.ok(f"would install with {result.method} ({result.detail})")
+    else:
+        console.ok(f"installed with {result.method} ({result.detail})")
 
     executable = result.executable
     if executable is None and not args.dry_run:
@@ -675,7 +857,7 @@ def main(argv: list[str] | None = None) -> int:
         console.ok(f"MCP entry point: {executable}")
 
     if not args.skip_mcp and executable is not None:
-        configure_claude_code(executable, console, args.dry_run)
+        configure_claude_code(executable, profile_dir, out_dir, console, args.dry_run, args.port)
         configure_dsh(executable, profile_dir, out_dir, console, args.dry_run, args.port)
         if not args.dry_run:
             write_generic_snippet(executable, profile_dir, out_dir, console, args.port)
@@ -683,12 +865,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.dry_run:
         profile_dir.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     cli = resolve_executable("ahb") if not args.dry_run else None
-    verify(cli, console, args.dry_run)
+    verify(cli, console, args.dry_run, profile_dir, args.port)
 
     has_display = IS_WINDOWS or IS_MACOS or bool(os.environ.get("DISPLAY"))
-    print_next_steps(console, profile_dir, has_display)
+    print_next_steps(console, profile_dir, out_dir, has_display)
     return 0
 
 

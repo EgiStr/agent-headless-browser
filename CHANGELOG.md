@@ -12,6 +12,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   It checks the prerequisites, installs the package, registers the MCP server with the Claude Code and DSH profiles
   on the machine, reuses an agent Chrome that is already running, and prints the sign-in steps.
 
+### Fixed
+- Google Chrome is now found on macOS. The runtime only looked for Windows and Linux, so an install on macOS
+  succeeded and then failed at `ahb start`.
+- The MCP server is registered with the port and profile the installer chose. Without them it started on the
+  default profile, which is a different Chrome than the one that was set up.
+
 ## [0.2.0] - 2026-10-21
 
 ### Changed

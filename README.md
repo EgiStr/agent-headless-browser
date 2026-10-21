@@ -57,12 +57,29 @@ The installer checks the prerequisites, installs the package with `uv` (or
 profiles it finds on the machine, and prints the sign-in steps. It never signs
 in for you: that step is yours.
 
+To see what it would do without changing anything:
+
 ```bash
-python scripts/install.py --dry-run    # show what it would do, change nothing
+python3 scripts/install.py --dry-run    # macOS or Linux
+py scripts/install.py --dry-run         # Windows
 ```
 
 It is safe to run again after an update, and it reuses an agent Chrome that is
 already running instead of starting a second one.
+
+### Pinning the bootstrap
+
+The one-liners above fetch `main`, which is a moving target: whatever sits on
+`main` at that moment runs with your privileges. If you want a fixed copy,
+point the installer at a commit instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EgiStr/agent-headless-browser/<commit>/scripts/install.sh | sh
+```
+
+The same works for the PowerShell one-liner. The script is short, and the whole
+install lives in [`scripts/install.py`](scripts/install.py), so it is worth a
+read before you run it.
 
 ### By hand
 
