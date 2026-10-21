@@ -79,6 +79,7 @@ def _no_chrome_anywhere(monkeypatch, platform_name: str) -> None:
     monkeypatch.setattr(chrome.sys, "platform", platform_name)
     monkeypatch.setattr(chrome, "WINDOWS_CHROME", (Path("/nonexistent/chrome.exe"),))
     monkeypatch.setattr(chrome, "MACOS_CHROME", (Path("/nonexistent/Google Chrome"),))
+    monkeypatch.setattr(chrome, "LINUX_CHROME_PATHS", (Path("/nonexistent/google-chrome"),))
     monkeypatch.setattr(chrome.shutil, "which", lambda name: None)
 
 
@@ -181,8 +182,19 @@ def test_find_chrome_macos_expands_the_home_directory(monkeypatch, tmp_path):
     assert chrome.find_chrome() == str(chrome_path)
 
 
-def test_find_chrome_linux_google_chrome(monkeypatch):
+def _linux_path_only(monkeypatch) -> None:
+    """Look at PATH only.
+
+    A CI runner may have Chrome installed in a fixed location, and that one is
+    found before PATH is consulted; a test about PATH has to take it out of
+    the way first.
+    """
     monkeypatch.setattr(chrome.sys, "platform", "linux")
+    monkeypatch.setattr(chrome, "LINUX_CHROME_PATHS", (Path("/nonexistent/google-chrome"),))
+
+
+def test_find_chrome_linux_google_chrome(monkeypatch):
+    _linux_path_only(monkeypatch)
     monkeypatch.setattr(
         chrome.shutil,
         "which",
@@ -192,7 +204,7 @@ def test_find_chrome_linux_google_chrome(monkeypatch):
 
 
 def test_find_chrome_linux_google_chrome_stable(monkeypatch):
-    monkeypatch.setattr(chrome.sys, "platform", "linux")
+    _linux_path_only(monkeypatch)
     monkeypatch.setattr(
         chrome.shutil,
         "which",
@@ -201,8 +213,18 @@ def test_find_chrome_linux_google_chrome_stable(monkeypatch):
     assert chrome.find_chrome() == "/usr/bin/google-chrome-stable"
 
 
-def test_find_chrome_never_returns_chromium(monkeypatch):
+def test_find_chrome_linux_prefers_the_fixed_path(monkeypatch, tmp_path):
+    """Chrome in a fixed location is found even when PATH does not mention it."""
     monkeypatch.setattr(chrome.sys, "platform", "linux")
+    installed = tmp_path / "google-chrome"
+    installed.touch()
+    monkeypatch.setattr(chrome, "LINUX_CHROME_PATHS", (installed,))
+    monkeypatch.setattr(chrome.shutil, "which", lambda name: None)
+    assert chrome.find_chrome() == str(installed)
+
+
+def test_find_chrome_never_returns_chromium(monkeypatch):
+    _linux_path_only(monkeypatch)
     monkeypatch.setattr(
         chrome.shutil,
         "which",
