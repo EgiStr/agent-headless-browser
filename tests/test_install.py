@@ -209,13 +209,19 @@ def test_parse_status_on_garbage():
 
 
 def test_resolve_executable_finds_a_script_on_the_path(tmp_path, monkeypatch):
-    # on Windows shutil.which only matches a name in PATHEXT, so the file needs
-    # the .exe suffix there
-    name = "ahb-mcp.exe" if os.name == "nt" else "ahb-mcp"
+    # A name no real install can have, so the fixture is the only candidate.
+    # On Windows shutil.which only matches a name in PATHEXT, so the file needs
+    # the .exe suffix there; on POSIX it only matches an executable file.
+    name = "ahb-mcp-fixture.exe" if os.name == "nt" else "ahb-mcp-fixture"
     script = tmp_path / name
     script.write_text("#!/bin/sh\n", encoding="utf-8")
-    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
-    assert install.resolve_executable("ahb-mcp") == script
+    if os.name != "nt":
+        script.chmod(0o755)
+    # Replace PATH instead of prepending to it: prepending would leave the
+    # real ahb-mcp console script visible, and on a machine that installed the
+    # package that one wins the lookup.
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert install.resolve_executable(Path(name).stem) == script
 
 
 def test_running_agent_profile_reads_the_user_data_dir(monkeypatch):
