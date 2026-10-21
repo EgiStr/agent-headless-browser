@@ -28,14 +28,14 @@ session is a manual check, because CI cannot sign in.
 | `tests/test_chrome.py` | Chrome discovery, launch flags, the user agent |
 | `tests/test_install.py` | The installer: DSH patch shapes, Claude Code registration, the generic snippet, backups, dry run |
 | `tests/test_looker.py` | The XSSI prefix, the column decoder, count expansion, the request builder |
-| `tests/test_interfaces.py` | The public surface of each module |
-| `tests/test_small_modules.py` | The small modules: config, google, health, session |
+| `tests/test_interfaces.py` | The CLI: argument parsing, the start modes, `ahb status` when nothing runs, error reporting |
+| `tests/test_small_modules.py` | `config` (settings from the environment), `google` (the account list), `health` (the check and the log) |
 | `tests/test_mcp_example.py` | `mcp.example.json` matches the settings the code reads |
 | `tests/integration/test_e2e.py` | Real Chrome: start, navigate, snapshot, click, stop |
 
 ### Writing a test that does not depend on the machine
 
-The unit tests must pass on a runner that has Chrome installed **and** on one that does not. Two traps, both hit here:
+The unit tests must pass on a runner that has Chrome installed **and** on one that does not. Three traps, all hit here:
 
 ```python
 # 1. The fixed paths are real on a Linux runner. Neutralise them when the
@@ -84,8 +84,8 @@ if you want the hooks green.
 
 1. Bump `version` in `pyproject.toml`.
 2. Move the `[Unreleased]` section of `CHANGELOG.md` under the new version, with today's date.
-3. `python -m build && twine check dist/*`.
-4. Tag and push: `git tag v0.3.0 && git push origin v0.3.0`.
+3. `pip install build twine` — neither is in the `dev` extra — then `python -m build && twine check dist/*`.
+4. Tag with the version you just set: `git tag v<version> && git push origin v<version>`.
 5. Publish: `python -m twine upload dist/*`.
 
 The one-line installers fetch `main`, so a release reaches users without touching their command. See "Pinning the bootstrap"

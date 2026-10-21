@@ -24,7 +24,8 @@ CI additionally builds the wheel and checks it with `twine`. See [docs/developme
 These are not style preferences. Breaking them breaks the Google session or the export.
 
 1. **Never copy the profile directory and never export or inject its cookies.** Since Chrome 146 a Google session can be
-   bound to the device (DBSC). A transplanted cookie lands on the account chooser. In testing, both revoked the session.
+   bound to the device (DBSC). A transplanted cookie lands on the account chooser. In testing a copied folder and injected
+   cookies both failed that way; which step killed the session was never isolated, so the rule stands.
 2. **One Chrome owns the profile.** A second Chrome on the same profile corrupts it; `browser_start` refuses when the CDP
    port is taken, and that refusal is correct.
 3. **Never type a password, a 2FA code or recovery information.** The human signs in; the agent verifies with

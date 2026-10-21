@@ -19,8 +19,9 @@ The agent never launches a browser of its own. It attaches to the one Chrome tha
 1. **One Chrome owns the profile, for its whole life.** A second Chrome on the same profile corrupts it, and Chrome's
    singleton hands the new command line to the old process instead of starting one.
 2. **The profile is never copied and its cookies are never exported.** Since Chrome 146 a Google session can be bound to
-   the device (DBSC, a TPM-held key). A transplanted cookie lands on the account chooser instead of the report. In testing,
-   both copying the folder and injecting the cookies revoked the session.
+   the device (DBSC, a TPM-held key). A transplanted cookie lands on the account chooser instead of the report. In testing
+   a copied folder and injected cookies both failed that way; which step killed the session was never isolated, so the
+   rule stands: one profile, one Chrome, sign in where it will be used.
 3. **Chrome is closed gracefully.** `Browser.close` over CDP lets rotated cookies reach the profile directory. A hard kill
    survived once, but that is not a guarantee.
 
@@ -79,16 +80,18 @@ first, never type credentials, never copy the profile.
 
 ## The installer
 
-`scripts/install.py` is the only part with a `#!/usr/bin/env python3` shebang and no third-party imports, so the one-line
-bootstrap works before anything is installed. It:
+`scripts/install.py` uses the standard library only, so the shell and PowerShell wrappers can run it with any
+Python 3.10+ before anything is installed. It:
 
-1. checks that Python 3.10+ and **real Chrome** are present (`chromium` is rejected: Google and Patchright expect Chrome);
+1. warns when Python 3.10+ or **real Chrome** is missing, and carries on — `chromium` is rejected (Google and Patchright
+   expect Chrome) and Chrome is only needed once `ahb start` runs;
 2. installs the package with `uv`, falling back to `pipx`, then `pip`;
 3. registers the MCP server with the DSH profiles and the Claude Code configs it finds;
 4. prints the sign-in step — it never signs in for you.
 
-Every file it rewrites is backed up first (`*.install.bak`, then `.bak.1`, `.bak.2`, …), and a config it cannot parse is
-left alone and written beside as `*.new` rather than overwritten.
+Every file it writes itself is backed up first (`*.install.bak`, then `.bak.1`, `.bak.2`, …), and a config it cannot
+use is left alone and written beside as `*.new` rather than overwritten. The Claude Code config is the exception to the
+backup rule: it is changed through the `claude` CLI (`mcp remove` then `mcp add`), which keeps its own history.
 
 ## Environment variables
 

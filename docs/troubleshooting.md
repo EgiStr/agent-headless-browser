@@ -19,7 +19,7 @@ Every symptom below was hit while building this project. The fix is in the right
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Google Chrome not found (checked …)` | Chrome is not where the code looks, or only Chromium is installed | Install **Google Chrome**. Chromium is rejected on purpose: Google and Patchright expect Chrome. |
-| Chrome is installed but not found (macOS) | It is in a non-standard place | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` and `~/Applications/...` are checked; anything else has to be on `PATH` |
+| Chrome is installed but not found (macOS) | It is in a non-standard place | The launcher checks `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` and the same path under `~/Applications`. It does **not** search `PATH` on macOS, so Chrome has to be in one of those two |
 | Chrome is installed but not found (Windows, consumer install) | The installer put it in the user's own AppData | `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe` is checked as well |
 | Chrome is installed but not found (Linux) | It is not on `PATH` | `/usr/bin/google-chrome`, `/usr/bin/google-chrome-stable` and `/opt/google/chrome/chrome` are checked |
 | `already owns port 9333` | Chrome is already running | Reuse it. A second Chrome on the same profile corrupts it. |
@@ -56,17 +56,17 @@ See [looker-export.md](looker-export.md) for the full table. The short version:
 | `the report issued no data requests` | Check the page id and the account's access to the report |
 | `datasources: []` on a report with charts | The page rendered from a cached tile and issued no data request, **or** a `/getSchema` response was fetched but could not be parsed — `looker.py` swallows that error, so the list comes back empty instead of raising | Export the exact page URL, then `health_check(report_url)`. For the parse-failure branch, run `ahb -v looker-export <url> --out <dir>`: the warnings only reach stderr, stdout is the JSON result |
 | `column ...: N values + M nulls != K rows` | Google changed the response format | Fix the decoder in `looker.py`; the format is documented in [findings.md](findings.md) |
-| Fewer rows than the report shows | The report applies filters; the export does not |
+| Fewer rows than the report shows | Not the filters — the export ignores them, so its count is at least the filtered one. Look at the page and the datasource instead | Export every page of the report, then compare with an unfiltered total |
 | First data row is `#adm1+name,...` | That is the source file's descriptor row. Skip it. |
 
 ## The installer and the DSH registration
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `cordis.patch.yml` will not parse after an install | The entry was appended to the file in the wrong shape | The installer now detects the shape (`- insert:` list, `[]`, or a mapping with `insert:`) and refuses to write anything it cannot parse. Backups are at `*.install.bak`, `.bak.1`, `.bak.2`. |
+| `cordis.patch.yml` will not parse after an install | The entry was appended to the file in the wrong shape | The installer matches the file's shape line by line — a `- insert:` list, a `[]` array, or a mapping with `insert:` — and **skips the file with a warning** when the result would not have exactly one entry. It does not parse the YAML, so an exotic layout is left untouched. Backups are at `*.install.bak`, `.bak.1`, `.bak.2`. |
 | The DSH entry is there but the tools never appear | DSH mounts MCP servers at boot | Restart DSH |
 | The MCP server env is missing a variable | DSH scrubs environment variables whose names match `/KEY\|PASSWORD\|SECRET\|TOKEN/i` | Do not put secrets in the MCP env; the profile directory is the secret |
-| `mcp.json` was not written | The existing file could not be parsed | The installer leaves it alone and writes `mcp.json.new` beside it; merge it yourself |
+| `mcp.json` was not written | The existing file is not a config this installer understands: invalid JSON, **or** valid JSON whose `mcpServers` is not an object | The installer leaves it alone, keeps it as `mcp.json.install.bak`, and writes `mcp.json.new` beside it; merge it yourself |
 | The installer changed a file it should not have | Older versions overwrote backups | The current installer never overwrites a backup; restore from `*.install.bak*` if needed |
 | `python3: not found` (macOS/Linux) / `py: not found` (Windows) | The bootstrap needs Python 3.10+ | The installer bootstraps `uv` and lets it provide Python when needed |
 

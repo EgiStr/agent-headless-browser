@@ -15,7 +15,9 @@ the Google session survives from task to task. The profile (`AHB_PROFILE_DIR`, d
 
 1. `browser_status` — read `running`, `headless` and `google_accounts`.
 2. `running: false` → `browser_start(headful=False)`, then `browser_status` again.
-3. `google_accounts: []` → the session is gone. Re-login:
+3. `google_accounts` does not contain **the account this task needs** → re-login as that account. An empty list means no
+   session at all; a different account means the wrong session, which is just as wrong: the export would run as somebody
+   else.
    - `login_begin` opens the sign-in page: a visible window on a desktop, or `ahb login-view` steps on a server with no
      display.
    - **The human signs in.** Never type a password, a 2FA code or recovery information.
@@ -23,7 +25,8 @@ the Google session survives from task to task. The profile (`AHB_PROFILE_DIR`, d
 
 Do not skip `browser_status`. Every other tool fails in a less obvious way when the session is gone.
 
-Both `login_begin` and `login_finish` restart Chrome, so any open tab is gone afterwards and you have to navigate again.
+`login_begin` restarts Chrome, and so does a **successful** `login_finish`; after either, any open tab is gone and you
+have to navigate again.
 
 ## If there is no `browser_status` in your tool list
 
@@ -86,7 +89,8 @@ looker_export(report_url, out_dir)   → per datasource: name, csv_path, raw_row
 ## Rules that keep the session alive
 
 - **Never copy the profile directory and never export or inject its cookies.** Since Chrome 146 a Google session can be
-  bound to the device (DBSC); a transplanted cookie lands on the account chooser. In testing, both revoked the session.
+  bound to the device (DBSC); a transplanted cookie lands on the account chooser. In testing a copied folder and injected
+  cookies both failed that way; which step killed the session was never isolated, so the rule stands.
 - **Never start a second Chrome on the profile.** `browser_start` refuses when the port is taken; that refusal is correct.
 - **Prefer `browser_stop` over killing Chrome.** A hard kill survived once in testing, but rotated cookies can be lost.
 - **Keep the port on 127.0.0.1.** CDP is full control of the signed-in account.
@@ -113,6 +117,7 @@ looker_export(report_url, out_dir)   → per datasource: name, csv_path, raw_row
 - You are about to start a Chrome yourself instead of calling `browser_start`.
 - You are about to report a number you have not seen in a tool's answer or in the exported file.
 - You are about to claim the export is complete without comparing it with the report's own total.
+- You are about to act on a report while a **different** Google account is signed in than the one the task needs.
 
 ## Without MCP (the CLI)
 

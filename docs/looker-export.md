@@ -45,13 +45,17 @@ import csv
 from collections import Counter
 from pathlib import Path
 
-rows = list(csv.DictReader(Path("wfp_food_prices_idn_grouped.csv").open(encoding="utf-8")))
+with Path("wfp_food_prices_idn_grouped.csv").open(encoding="utf-8", newline="") as fh:
+    rows = [r for r in csv.DictReader(fh) if not r["admin1"].startswith("#")]
 total = sum(int(r["record_count"]) for r in rows)
 by_admin1 = Counter()
 for r in rows:
     by_admin1[r["admin1"] or "National Average"] += int(r["record_count"])
 print(total, by_admin1.most_common(5))
 ```
+
+The descriptor row is filtered out on purpose: counted as a record it would inflate the total and add a bogus
+`#adm1+name` bucket to the per-region counts.
 
 ## The reference export
 
@@ -102,8 +106,9 @@ https://datastudio.google.com/u/0/reporting/<id>            → page 1's datasou
 https://datastudio.google.com/u/0/reporting/<id>/page/<p2>  → page 2's datasources
 ```
 
-Get the page ids from the report's own tabs (`page_snapshot` on the report, or the `page=` parameter in the URL). Give each
-page its own `out_dir`, or name the files after the page, so the exports do not overwrite each other.
+Get the page ids from the report's own tabs: `page_snapshot` on the report, or open a tab and read the `/page/<pageId>`
+segment of the URL. Give each page its own `out_dir`, or name the files after the page, so the exports do not overwrite
+each other.
 
 ## How it works, and why it can break
 
@@ -126,7 +131,7 @@ notice, and the export stops working. The failure is loud: `column <kind>: N val
 | | |
 |---|---|
 | 212,117 rows | 99 s on a Linux container, 120 s on Windows |
-| Memory | The rows are held in the Python process while they are written, so peak RAM scales with the datasource. A million-row CSV is a few hundred MB. |
+| Memory | The grouped rows **and** the expanded raw rows are both held in the Python process until the file is written, so peak RAM scales with the datasource. A million-row CSV is a few hundred MB. |
 | Rights | You get what the signed-in account can see. A viewer's export is the viewer's view. |
 | Filters | Ignored on purpose: the export is the whole datasource. The report's own filters do not apply. |
 | Page size | `page_size` is rows per request. Lower it if the request times out; raise it for fewer round trips. |
@@ -137,6 +142,6 @@ notice, and the export stops working. The failure is loud: `column <kind>: N val
 |---|---|---|
 | `not signed in: the report redirected to Google sign-in` | The session died | `login_begin`, the human signs in, `login_finish` |
 | `the report issued no data requests (no access, or nothing on this page)` | Wrong page id, or the account cannot see the report | Open the report by hand and read its tab ids; check the sharing settings |
-| `datasources: []` but the report has charts | The report renders from a cached tile, or the data call had not fired yet | Retry on the exact page URL; check `health_check(report_url)` |
-| `HTTP 403` on the replay | The captured headers went stale | Re-run the export so a fresh request is captured |
-| Row count much lower than the report's total | The report filters by default | The export ignores filters; compare against an unfiltered total |
+| `datasources: []` but the report has charts | The report rendered from a cached tile and issued no data request, **or** a `/getSchema` response was fetched but could not be parsed — that error is logged and swallowed, so the list comes back empty instead of raising | Export the exact page URL; `health_check(report_url)` tells the two apart. For the parse branch run `ahb -v looker-export <url> --out <dir>`: the warnings only reach stderr |
+| HTTP 403 on the replay | The captured headers went stale | Re-run the export so a fresh request is captured |
+| Row count much lower than the report's total | Not the filters: the export ignores them, so its count is at least the filtered one. A lower count points at the wrong page, a datasource the page does not use, or an account that sees less | Export every page of the report and compare with an unfiltered total |

@@ -28,11 +28,13 @@ only the datasources used on the page you open.
 | `name` | The datasource name, used for the file name |
 | `csv_path` | The raw CSV it wrote |
 | `columns` | The column names, in order — this is the column count |
-| `raw_rows` | Rows in `<name>.csv`: one per record, all dimensions |
+| `raw_rows` | Rows in `<name>.csv`: the grouped rows expanded by their Record Count, so one per record |
 | `grouped_rows` | Rows in `<name>_grouped.csv`, which also has a `record_count` column (so `len(columns) + 1` columns) |
 
-`raw_rows` is the datasource's full row count, taken from the server's own total — not a page of it. `raw_rows` and
-`grouped_rows` differ only when the report groups rows; otherwise they are equal.
+The server returns **grouped** rows, each with a Record Count. `grouped_rows` is how many of those it returned;
+`raw_rows` is the same rows expanded by their counts, so it is the number of records behind them. They are equal when
+the report groups nothing — every Record Count is 1. Neither is a page of the data: the exporter pages until the server
+says it has no more.
 
 ## The numbers you may state
 
@@ -61,11 +63,12 @@ path = Path("wfp_food_prices_idn.csv")
 with path.open(encoding="utf-8", newline="") as fh:
     reader = csv.reader(fh)
     header = next(reader)
-    rows = sum(1 for _ in reader)
-print(len(header), "columns,", rows, "rows")
+    rows = [r for r in reader if not r[1].startswith("#")]  # skip the descriptor row
+print(len(header), "columns,", len(rows), "records")
 ```
 
-Use a CSV parser, not `split(",")`: a quoted field may contain a comma or a newline. Skip the descriptor row first (below).
+Use a CSV parser, not `split(",")`: a quoted field may contain a comma or a newline. Skip the descriptor row (below)
+before you count, or it is counted as a record.
 
 **Compare with the report.** Open the report with `navigate(report_url)` and read a scorecard or table total from
 `page_snapshot` or `evaluate`. A report with a per-region scorecard is the good case: check every region, not one.
@@ -82,8 +85,9 @@ https://datastudio.google.com/u/0/reporting/<id>            → page 1
 https://datastudio.google.com/u/0/reporting/<id>/page/<p2>  → page 2
 ```
 
-Find the page ids from the report's own tabs (`page_snapshot` on the report, or the `page=` parameter in the URL). Give each
-page its own `out_dir`, or its files overwrite each other. When you report, say which pages were exported.
+Find the page ids from the report's own tabs: `page_snapshot` on the report, or open a tab and read the `/page/<pageId>`
+segment of the URL. Give each page its own `out_dir`, or its files overwrite each other. When you report, say which pages
+were exported.
 
 ## The descriptor row
 
@@ -99,14 +103,16 @@ an export artifact. Each cell names the source field and what it holds (`adm1+na
 for in the dimension columns. Skip the row by looking at `admin1`:
 
 ```python
-rows = [r for r in csv.DictReader(f) if not r["admin1"].startswith("#")]
+with Path("wfp_food_prices_idn.csv").open(encoding="utf-8", newline="") as fh:
+    rows = [r for r in csv.DictReader(fh) if not r["admin1"].startswith("#")]
 ```
 
 Other datasets mark their descriptor rows differently: check the first rows of the file instead of assuming.
 
-**The arithmetic:** the exported file has `raw_rows + 1` lines — one header the exporter wrote, then the rows. The
-descriptor row is one of those rows and is counted in `raw_rows`, so the number of actual records is `raw_rows - 1`. The
-reference export is 212,117 rows = 212,116 records + 1 descriptor row, in 212,118 lines.
+**The arithmetic:** the exported file has `raw_rows + 1` lines — one header the exporter wrote, then the rows. When the
+file has a descriptor row, that row is one of those rows and is counted in `raw_rows`, so the number of records is
+`raw_rows - 1`. Check that the file really has one before subtracting it. The reference export is 212,117 rows = 212,116
+records + 1 descriptor row, in 212,118 lines.
 
 ## The reference export
 
@@ -132,7 +138,7 @@ changed" from "the data changed".
 | `the report issued no data requests` | Wrong page id, or no access to the report | Open the report by hand, read its tab ids, check sharing |
 | `datasources: []` although the report has charts | A cached tile rendered without a data call, or a `/getSchema` response was fetched but could not be parsed — `looker.py` swallows that error, so the list comes back empty instead of raising | Export the exact page URL; `health_check(report_url)` is the discriminator. For the parse branch run `ahb -v looker-export <url> --out <dir>`: the warnings only reach stderr |
 | `column …: N values + M nulls != K rows` | Google changed the response format | The decoder in `looker.py` needs updating; the format is in [docs/findings.md](../../../docs/findings.md) |
-| Fewer rows than the report shows | The report filters by default | The export ignores filters; compare with an unfiltered total |
+| Fewer rows than the report shows | Not the filters: the export ignores them, so its count is at least the filtered one. Look at the page and the datasource instead | Export every page of the report, then compare with an unfiltered total |
 | An empty file | The page had not finished loading | `navigate` the page with a longer wait, then export again |
 
 ## Red flags — stop and think
@@ -140,6 +146,6 @@ changed" from "the data changed".
 - You are about to report a row count you did not read from the tool or the file.
 - You are about to add the columns of several tables together.
 - You are about to claim the export is complete without comparing it with the report's own total.
-- You are about to re-export with a bigger `page_size` because a row count "looks like a page limit". `raw_rows` is the
-  server's total; `page_size` only decides how many rows come back per request.
+- You are about to re-export with a bigger `page_size` because a row count "looks like a page limit". `page_size` only
+  decides how many rows come back per request; the exporter pages until the server has no more.
 - You are about to export several pages into one directory.

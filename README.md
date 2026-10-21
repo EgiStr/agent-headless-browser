@@ -26,8 +26,9 @@ The [research log](docs/findings.md) has the details. In short:
   bound to the device (DBSC, a TPM-held key). Transplanted cookies land on the account chooser, headless or headful.
 - **The fix is to sign in once inside a dedicated agent profile with DBSC disabled.** The agent then reuses that
   profile, headless.
-- **One Chrome process owns the profile for its whole life, and agents attach over CDP.** In testing, copying the
-  profile or reusing its cookies elsewhere got the session revoked.
+- **One Chrome process owns the profile for its whole life, and agents attach over CDP.** In testing, a copied
+  profile folder and injected cookies both failed; which step killed the session was never isolated, so both are
+  off limits.
 - **A server without a display can complete the sign-in.** `ahb login-view` streams the headless tab to your
   browser through an SSH tunnel. This was tested in a display-less Debian container: sign-in, restart, and a 212k-row export.
 

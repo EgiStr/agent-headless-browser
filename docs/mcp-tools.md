@@ -17,7 +17,7 @@ Signatures below are exact — they are the code, not a paraphrase.
 | `navigate` | `(url: str, wait_ms: int = 3000)` | `{url, title, text}` (text capped at 3000 chars) |
 | `page_snapshot` | `(max_elements: int = 150)` | `{url, title, text, elements}` |
 | `click` | `(ref: int \| None = None, selector: str \| None = None)` | `{url, title}` |
-| `type_text` | `(text: str, ref=None, selector=None, submit: bool = False)` | `{url}` |
+| `type_text` | `(text: str, ref: int \| None = None, selector: str \| None = None, submit: bool = False)` | `{url}` |
 | `press_key` | `(key: str)` | `"ok"` |
 | `screenshot` | `(full_page: bool = False)` | a PNG image |
 | `evaluate` | `(script: str)` | the result as JSON text (capped at 20 000 chars) |
@@ -28,8 +28,9 @@ Signatures below are exact — they are the code, not a paraphrase.
 
 ### `browser_status()`
 
-The first call of every task. It never fails, and it answers three different questions at once: is Chrome up, is it
-headless, and **which Google account is signed in**.
+The first call of every task. It answers three different questions at once: is Chrome up, is it headless, and **which
+Google account is signed in**. A stopped browser is not an error — the answer is simply `running: false`. It can still
+fail, if the CDP call or the account lookup errors.
 
 ```json
 {
@@ -42,8 +43,8 @@ headless, and **which Google account is signed in**.
 }
 ```
 
-`google_accounts` is empty when the browser is not running, and also when the profile has no live session. The two cases
-are told apart by `running`.
+`google_accounts` is only there when Chrome is running: the key is **absent** while the browser is down, and it is an
+**empty list** when the browser is up but the profile has no live session. The two cases are told apart by `running`.
 
 ### `browser_start(headful=False)`
 
@@ -152,5 +153,6 @@ is **not** healthy. The record is appended to `<AHB_OUT_DIR>/session_health.json
 | `Google Chrome not found (checked …)` | Chrome is not installed where the code looks | Install Google Chrome (not Chromium) |
 | `not signed in: the report redirected to Google sign-in` | The session is gone | `login_begin` → human signs in → `login_finish` |
 | `the report issued no data requests (no access, or nothing on this page)` | The page did not query any datasource | Check the page id, and that the account can see the report |
-| `ChromeError: already owns port 9333` | A Chrome is already there | Reuse it, do not start a second one |
+| `ChromeError: a Chrome already owns port 9333; stop it first` | A Chrome is already there | Reuse it, do not start a second one |
+| `give ref (from page_snapshot) or a Playwright selector` | `click`/`type_text` were called without either | Take a snapshot and pass its number, or a selector |
 | `Timeout 15000ms exceeded` | The element was not there | New snapshot; the page may have changed |
